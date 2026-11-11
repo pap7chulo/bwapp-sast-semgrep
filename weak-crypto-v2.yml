@@ -1,0 +1,14 @@
+rules:
+  - id: php-weak-crypto-v2
+    languages: [php]
+    severity: WARNING
+    message: "Cifrado débil u obsoleto (CWE-327): base64/rot13/mcrypt usados para 'proteger' datos."
+    metadata: { owasp: "A02:2021 - Cryptographic Failures", cwe: "CWE-327", categoria: "Weak Crypto" }
+    patterns:
+      - pattern-either:
+          - pattern: base64_encode(...)
+          - pattern: str_rot13(...)
+          - pattern: mcrypt_encrypt(...)
+          - pattern: mcrypt_decrypt(...)
+      # Ajuste de triaje: Basic Auth (RFC 7617) exige Base64; no es un intento de cifrado
+      - pattern-not-inside: $O->setHeader(...)

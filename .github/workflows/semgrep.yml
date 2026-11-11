@@ -1,0 +1,68 @@
+name: semgrep-sast
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # subir SARIF a Code Scanning
+  pages: write             # publicar el dashboard
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v5
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Instalar Semgrep y matplotlib
+        run: pip install semgrep matplotlib
+
+      - name: Escaneo SAST de los 3 proyectos
+        run: |
+          OFF="--metrics=off --disable-version-check --no-git-ignore --timeout 0"
+          mkdir -p out
+          semgrep scan --config php-sast-rules.yml $OFF --exclude admin --exclude soap --json -o out/core.json bWAPP/app
+          semgrep scan --config php-sast-rules.yml $OFF --json -o out/admin.json bWAPP/app/admin
+          semgrep scan --config php-sast-rules.yml $OFF --json -o out/soap.json  bWAPP/app/soap
+          semgrep scan --config php-sast-rules.yml $OFF --sarif -o out/bwapp.sarif bWAPP/app
+
+      - name: Generar gráficas y dashboard
+        run: |
+          python analyze.py
+          python generate_report.py
+
+      - name: Subir SARIF a GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: out/bwapp.sarif
+          category: semgrep-bwapp
+
+      - name: Preparar sitio
+        run: |
+          mkdir -p site
+          cp reporte.html site/index.html
+          cp out/bwapp.sarif site/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - name: Publicar dashboard en GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
